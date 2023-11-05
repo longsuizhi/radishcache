@@ -1,4 +1,4 @@
-package cache
+package radishcache
 
 type ByteView struct {
 	b []byte //存储真实的缓存值 只读

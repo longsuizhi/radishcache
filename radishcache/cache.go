@@ -1,13 +1,13 @@
-package cache
+package radishcache
 
 import (
-	"github.com/longsuizhi/cache/lru"
+	"radishcache/lru"
 	"sync"
 )
 
 type cache struct {
-	mu         sync.Mutex	// 互斥锁
-	lru        *lru.Cache	// 实例化lru
+	mu         sync.Mutex // 互斥锁
+	lru        *lru.Cache // 实例化lru
 	cacheBytes int64
 }
 
