@@ -1,6 +1,7 @@
 package radishcache
 
 import (
+	"radish/singleflight"
 	"fmt"
 	"log"
 	"sync"
@@ -8,10 +9,11 @@ import (
 
 // 缓存命名空间
 type Group struct {
-	name      string     // 唯一的名称
-	getter    Getter     // 缓存未命中时获取源数据的回调
-	mainCache cache      // 并发缓存
-	peers     PeerPicker // 分布式节点
+	name      string              // 唯一的名称
+	getter    Getter              // 缓存未命中时获取源数据的回调
+	mainCache cache               // 并发缓存
+	peers     PeerPicker          // 分布式节点
+	loader    *singleflight.Group // 请求组
 }
 
 // 回调函数，缓存不存在时，调用这个函数，得到源数据
@@ -41,6 +43,7 @@ func NewGroup(name string, cacacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacacheBytes},
+		loader:    &singleflight.Group{},
 	}
 	//存入全局变量groups中
 	groups[name] = g
@@ -92,18 +95,25 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 }
 
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		// 选择节点
-		if peer, ok := g.peers.PickPeer(key); ok {
-			// 非本机节点，调用getFromPeer从远处获取
-			if value, err := g.getFromPeer(peer, key); err == nil {
-				return value, nil
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			// 选择节点
+			if peer, ok := g.peers.PickPeer(key); ok {
+				// 非本机节点，调用getFromPeer从远处获取
+				if value, err := g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[GeeCache] Failed to get from peer", err)
 			}
-			log.Println("[GeeCache] Failed to get from peer", err)
 		}
+		// 本机节点或者失败，回退到getLocally
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return viewi.(ByteView), nil
 	}
-	// 本机节点或者失败，回退到getLocally
-	return g.getLocally(key)
+	return
 }
 
 // 实现了PeerGetter接口的httpGetter从访问远程节点，获取缓存值
