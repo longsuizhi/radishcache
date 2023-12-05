@@ -27,6 +27,7 @@ func New(cacacheBytes int64, strategy string) Cache {
 	switch strategy {
 	case TYPE_LRU:
 		return NewLRUCache(cacacheBytes, nil)
+	
 	default:
 		panic("radishcache: Unknown type " + strategy)
 	}
